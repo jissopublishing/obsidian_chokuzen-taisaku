@@ -9,8 +9,10 @@ git push
 ---
 
 git pull(Android):
-
----
+****
+cd ~/storage/shared/Obsidian/obsidian_chokuzen-taisaku
+git pull --ff-only
+****
 
 cd ~/storage/shared/Obsidian/obsidian_chokuzen-taisaku
 Is
