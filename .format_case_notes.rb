@@ -67,6 +67,12 @@ def clean_line(line)
   line = line.gsub(/管理監[智習録]者/, "管理監督者")
   line = line.gsub("指導命令", "指揮命令").gsub("指運命令", "指揮命令")
   line = line.gsub("火作業", "実作業").gsub("使用昔", "使用者").gsub("他用者", "使用者")
+  line = line.gsub("労働片", "労働者").gsub("労働所", "労働者")
+  line = line.gsub("労基法知", "労基法上").gsub("楽法！", "労基法上")
+  line = line.gsub("不活動仮眠時問", "不活動仮眠時間")
+  line = line.gsub("ポイラー", "ボイラー").gsub("書報", "警報")
+  line = line.gsub("Y社ご勤務", "Y社に勤務").gsub("時間外割増賃金とは、美容室", "Xは、美容室")
+  line = line.gsub("午後1時から午前5時まで", "午後10時から午前5時まで")
   line
 end
 
@@ -102,21 +108,45 @@ def question_markdown(lines)
   text = paragraphs(lines)
   text = text.gsub(/(?:\A|\n\n)(?:1?Q|Ｑ)\s*([12])\s*/, "\n\n### Q\\1\n\n")
   text = text.gsub(/(?:\A|\n\n)(?:Q|Ｑ)\s*/, "\n\n### Q1\n\n") unless text.include?("### Q")
+  text = text.gsub(/(?<!# )Q2\s*/, "\n\n### Q2\n\n")
   text.strip
 end
 
 def issue_parts(lines)
-  data = lines.map { |l| clean_line(l) }.reject(&:empty?)
+  data = lines.flat_map do |source|
+    line = clean_line(source)
+    case line
+    when /\A(?:争点|◆点|手点|点)([①②]?)(.*)\z/
+      label, rest = Regexp.last_match(1), Regexp.last_match(2)
+      ["争点#{label}", rest]
+    when /\A結論([①②]?)(.*)\z/
+      label, rest = Regexp.last_match(1), Regexp.last_match(2)
+      ["結論#{label}", rest]
+    when /\APOINT(.*)\z/
+      ["POINT", Regexp.last_match(1)]
+    else
+      [line]
+    end
+  end.reject(&:empty?)
   data.reject! { |l| l.match?(/\A(?:\d+|社労士|社労士V|労働判例100)\z/) }
   point_at = data.index { |l| l == "POINT" }
   point_at ||= data.index { |l| l.include?("POINT") }
   point = point_at ? data[(point_at + 1)..] : []
   head = point_at ? data[0...point_at] : data
-  dispute_at = head.index("争点")
-  conclusion_at = head.index("結論")
+  dispute_at = head.index { |l| l.match?(/\A争点[①②]?\z/) }
+  conclusion_at = head.index { |l| l.match?(/\A結論[①②]?\z/) }
   if dispute_at && conclusion_at
     dispute = head[0...dispute_at] + head[(dispute_at + 1)...conclusion_at]
     tail = head[(conclusion_at + 1)..] || []
+  elsif dispute_at
+    question_end = head.each_index.find { |i| i > dispute_at && head[i].end_with?("か。") }
+    if question_end && head[question_end + 1]
+      dispute = head[(dispute_at + 1)..question_end]
+      tail = head[(question_end + 1)..] || []
+    else
+      dispute = head
+      tail = []
+    end
   else
     dispute = head
     tail = []
@@ -142,7 +172,7 @@ META.each do |name, (theme, decision, exams, skip)|
   first = pages.shift.to_s.lines.map(&:chomp)
   rest = pages.join("\n").lines.map(&:chomp)
 
-  issue_heading = first.index { |l| l.strip == "争点・結論" }
+  issue_heading = first.index { |l| l.strip.match?(/\A[争手]点・結論\z/) }
   issue_label = first.index { |l| l.strip == "争点" }
   issue_at = issue_heading || issue_label
   verdict_on_first = first.index { |l| l.strip == "判旨" }
